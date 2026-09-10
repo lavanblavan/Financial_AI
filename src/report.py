@@ -11,6 +11,8 @@ from typing import Any
 import matplotlib.pyplot as plt
 import pandas as pd
 
+import seaborn as sns
+
 from src.config import project_root
 
 
@@ -31,27 +33,29 @@ def render_brief(
 
 
 def _chart_base64(frame: pd.DataFrame, ticker: str) -> str:
-    plot_df = frame.tail(180)
-    fig, axes = plt.subplots(3, 1, figsize=(10, 8), sharex=True)
+    sns.set_theme(style="whitegrid", context="notebook", palette="colorblind")
+    plot_df = frame.tail(180).copy()
+    plot_df.index = pd.to_datetime(plot_df.index)
+    fig, axes = plt.subplots(4, 1, figsize=(11, 12), sharex=True)
 
-    axes[0].plot(plot_df.index, plot_df["Close"], color="#111", label="Close")
-    axes[0].plot(plot_df.index, plot_df["bb_upper"], color="#888", linewidth=0.8)
-    axes[0].plot(plot_df.index, plot_df["bb_mid"], color="#555", linewidth=0.8)
-    axes[0].plot(plot_df.index, plot_df["bb_lower"], color="#888", linewidth=0.8)
-    axes[0].set_title(f"{ticker} price and Bollinger Bands")
-    axes[0].legend(loc="upper left")
+    sns.lineplot(ax=axes[0], data=plot_df[["Close", "sma_50", "sma_200"]])
+    axes[0].set_title(f"{ticker} close vs SMA 50 / SMA 200")
+    axes[0].set_ylabel("Price")
 
-    axes[1].plot(plot_df.index, plot_df["rsi_14"], color="#0b6")
-    axes[1].axhline(70, color="#c33", linewidth=0.7)
-    axes[1].axhline(30, color="#c33", linewidth=0.7)
-    axes[1].set_ylim(0, 100)
-    axes[1].set_title("RSI 14")
+    sns.lineplot(ax=axes[1], data=plot_df[["Close", "bb_upper", "bb_mid", "bb_lower"]])
+    axes[1].set_title("Bollinger Bands")
+    axes[1].set_ylabel("Price")
 
-    axes[2].plot(plot_df.index, plot_df["macd"], label="MACD")
-    axes[2].plot(plot_df.index, plot_df["macd_signal"], label="Signal")
-    axes[2].bar(plot_df.index, plot_df["macd_hist"], color="#999", width=1.0)
-    axes[2].set_title("MACD")
-    axes[2].legend(loc="upper left")
+    sns.lineplot(ax=axes[2], data=plot_df["rsi_14"])
+    axes[2].axhline(70, color="crimson", linestyle="--", linewidth=1)
+    axes[2].axhline(30, color="crimson", linestyle="--", linewidth=1)
+    axes[2].set_ylim(0, 100)
+    axes[2].set_title("RSI 14")
+
+    colors = ["#4c72b0" if v >= 0 else "#c44e52" for v in plot_df["macd_hist"]]
+    axes[3].bar(plot_df.index, plot_df["macd_hist"], color=colors, width=1.0, alpha=0.45)
+    sns.lineplot(ax=axes[3], data=plot_df[["macd", "macd_signal"]])
+    axes[3].set_title("MACD")
 
     fig.tight_layout()
     buffer = io.BytesIO()
