@@ -50,8 +50,6 @@ def _context_pack(ticker: str, snapshot: dict[str, Any], headlines: list[dict[st
 
 
 def _call_llm(settings: Settings, prompt: str, context: str) -> str:
-    if settings.llm_provider == "gemini":
-        return _call_gemini(settings.gemini_api_key or "", prompt, context)
     return _call_groq(settings.groq_api_key or "", prompt, context)
 
 
@@ -75,24 +73,6 @@ def _call_groq(api_key: str, prompt: str, context: str) -> str:
     )
     response.raise_for_status()
     return response.json()["choices"][0]["message"]["content"]
-
-
-def _call_gemini(api_key: str, prompt: str, context: str) -> str:
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={api_key}"
-    )
-    response = requests.post(
-        url,
-        json={
-            "system_instruction": {"parts": [{"text": prompt}]},
-            "contents": [{"parts": [{"text": context}]}],
-            "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
-        },
-        timeout=60,
-    )
-    response.raise_for_status()
-    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 
 
 def _parse_signal(raw: str) -> dict[str, Any]:

@@ -26,19 +26,17 @@ copy .env.example .env
 Edit `.env`:
 
 ```
-LLM_PROVIDER=groq
 GROQ_API_KEY=your_key_here
 TICKER=AAPL
 ```
 
-Get a free Groq key at https://console.groq.com/keys  
-Or set `LLM_PROVIDER=gemini` and `GEMINI_API_KEY`.
+Get a free Groq key at https://console.groq.com/keys
 
 ### Colab Secrets
 
 1. Open the notebook in Colab.
 2. Click the **key icon** (Secrets).
-3. Add `GROQ_API_KEY` (and optionally `LLM_PROVIDER`, `TICKER`).
+3. Add `GROQ_API_KEY` (and optionally `TICKER`).
 4. Turn **Notebook access** on for each secret.
 
 Do not paste keys into cells. Colab Secrets stay on your Google account, not in GitHub.
@@ -59,7 +57,7 @@ Open `task1.ipynb` in Cursor / VS Code / Jupyter and run all cells.
 
 Open:
 
-`https://colab.research.google.com/github/<you>/<repo>/blob/main/task1.ipynb`
+`https://colab.research.google.com/github/lavanblavan/Financial_AI/blob/main/task1.ipynb`
 
 Cell 1 clones this repo into `/content`, installs `requirements.txt`, then imports `src`.
 

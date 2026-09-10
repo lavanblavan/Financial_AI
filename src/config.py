@@ -58,19 +58,11 @@ def get_secret(name: str) -> str | None:
 class Settings:
     ticker: str
     lookback: str
-    llm_provider: str
     groq_api_key: str | None
-    gemini_api_key: str | None
-
-    @property
-    def llm_api_key(self) -> str | None:
-        if self.llm_provider == "gemini":
-            return self.gemini_api_key
-        return self.groq_api_key
 
     @property
     def llm_ready(self) -> bool:
-        return bool(self.llm_api_key)
+        return bool(self.groq_api_key)
 
 
 def load_settings() -> Settings:
@@ -83,16 +75,10 @@ def load_settings() -> Settings:
         if load_dotenv:
             load_dotenv(project_root() / ".env", override=False)
 
-    provider = (get_secret("LLM_PROVIDER") or "groq").strip().lower()
-    if provider not in {"groq", "gemini"}:
-        provider = "groq"
-
     return Settings(
         ticker=(get_secret("TICKER") or "AAPL").upper(),
         lookback=get_secret("LOOKBACK") or "2y",
-        llm_provider=provider,
         groq_api_key=get_secret("GROQ_API_KEY"),
-        gemini_api_key=get_secret("GEMINI_API_KEY"),
     )
 
 
@@ -104,6 +90,6 @@ def describe_env(settings: Settings) -> dict[str, str]:
         "secret_source": source,
         "ticker": settings.ticker,
         "lookback": settings.lookback,
-        "llm_provider": settings.llm_provider,
+        "llm_provider": "groq",
         "llm_key_present": "yes" if settings.llm_ready else "no",
     }

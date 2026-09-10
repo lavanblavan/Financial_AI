@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
+import yfinance as yf
 
 from src.config import project_root
 
@@ -14,8 +13,6 @@ def fetch_prices(
     period: str = "2y",
     cache: bool = True,
 ) -> pd.DataFrame:
-    import yfinance as yf
-
     ticker = ticker.upper()
     cache_path = project_root() / "data" / f"{ticker}_{period}.csv"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
