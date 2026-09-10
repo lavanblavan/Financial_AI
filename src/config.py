@@ -51,6 +51,24 @@ def _secret_from_colab(name: str) -> str | None:
     return str(userdata.get(name)).strip()
 
 
+def normalize_secret(value: str | None) -> str | None:
+    """Strip quotes, whitespace, and a leading Bearer prefix."""
+    if value is None:
+        return None
+    text = str(value).strip().strip('"').strip("'")
+    if text.lower().startswith("bearer "):
+        text = text[7:].strip()
+    return text or None
+
+
+def groq_key_shape(api_key: str | None) -> str:
+    if not api_key:
+        return "missing"
+    if api_key.startswith("gsk_"):
+        return "gsk_*"
+    return "unexpected"
+
+
 def _secret_from_env(name: str) -> str | None:
     value = os.getenv(name)
     if value is None:
@@ -64,8 +82,8 @@ def get_secret(name: str) -> str | None:
     if running_in_colab():
         value = _secret_from_colab(name)
         if value:
-            return value
-    return _secret_from_env(name)
+            return normalize_secret(value)
+    return normalize_secret(_secret_from_env(name))
 
 
 @dataclass(frozen=True)
@@ -106,6 +124,7 @@ def describe_env(settings: Settings) -> dict[str, str]:
         "lookback": settings.lookback,
         "llm_provider": "groq",
         "llm_key_present": "yes" if settings.llm_ready else "no",
+        "groq_key_shape": groq_key_shape(settings.groq_api_key),
     }
     if running_in_colab():
         status["groq_secret_status"] = probe_colab_secret("GROQ_API_KEY")

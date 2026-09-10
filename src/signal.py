@@ -7,10 +7,16 @@ from typing import Any
 
 import requests
 
-from src.config import Settings, project_root
+from src.config import Settings, groq_key_shape, project_root
+
+GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 class LLMNotConfiguredError(RuntimeError):
+    pass
+
+
+class GroqAPIError(RuntimeError):
     pass
 
 
@@ -61,7 +67,7 @@ def _call_groq(api_key: str, prompt: str, context: str) -> str:
             "Content-Type": "application/json",
         },
         json={
-            "model": "llama-3.1-8b-instant",
+            "model": GROQ_MODEL,
             "temperature": 0.2,
             "response_format": {"type": "json_object"},
             "messages": [
@@ -71,8 +77,27 @@ def _call_groq(api_key: str, prompt: str, context: str) -> str:
         },
         timeout=60,
     )
-    response.raise_for_status()
+    if response.status_code >= 400:
+        raise GroqAPIError(_groq_error_message(response, api_key))
     return response.json()["choices"][0]["message"]["content"]
+
+
+def _groq_error_message(response: requests.Response, api_key: str) -> str:
+    try:
+        payload = response.json()
+        detail = payload.get("error", {}).get("message") or str(payload)
+    except ValueError:
+        detail = response.text[:300]
+    shape = groq_key_shape(api_key)
+    if response.status_code == 401:
+        return (
+            f"Groq 401 Unauthorized (key shape {shape}). "
+            "The secret is present but Groq rejected it. "
+            "Create a new key at https://console.groq.com/keys, "
+            "paste only the gsk_... value (no quotes, no Bearer), "
+            "update the Colab Secret GROQ_API_KEY, then Runtime → Restart session."
+        )
+    return f"Groq HTTP {response.status_code}: {detail}"
 
 
 def _parse_signal(raw: str) -> dict[str, Any]:
