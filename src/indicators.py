@@ -10,8 +10,8 @@ def add_indicators(prices: pd.DataFrame) -> pd.DataFrame:
     out = prices.copy()
     close = out["Close"]
 
-    out["sma_20"] = sma(close, 20)
     out["sma_50"] = sma(close, 50)
+    out["sma_200"] = sma(close, 200)
     out["rsi_14"] = rsi_wilder(close, 14)
     macd_line, signal, hist = macd(close, 12, 26, 9)
     out["macd"] = macd_line
@@ -73,17 +73,17 @@ def bollinger(
 
 
 def latest_snapshot(frame: pd.DataFrame) -> dict:
-    row = frame.dropna(subset=["sma_20", "rsi_14", "macd"]).iloc[-1]
-    prev = frame.dropna(subset=["sma_20", "sma_50"]).iloc[-2]
+    row = frame.dropna(subset=["sma_200", "rsi_14", "macd"]).iloc[-1]
+    prev = frame.dropna(subset=["sma_50", "sma_200"]).iloc[-2]
 
     return {
         "date": str(row.name.date()) if hasattr(row.name, "date") else str(row.name),
         "close": float(row["Close"]),
-        "sma_20": float(row["sma_20"]),
         "sma_50": float(row["sma_50"]),
-        "sma_cross": "bullish" if row["sma_20"] > row["sma_50"] else "bearish",
+        "sma_200": float(row["sma_200"]),
+        "sma_cross": "bullish" if row["sma_50"] > row["sma_200"] else "bearish",
         "sma_cross_flipped": bool(
-            (prev["sma_20"] > prev["sma_50"]) != (row["sma_20"] > row["sma_50"])
+            (prev["sma_50"] > prev["sma_200"]) != (row["sma_50"] > row["sma_200"])
         ),
         "rsi_14": float(row["rsi_14"]),
         "macd": float(row["macd"]),
@@ -111,13 +111,13 @@ def _bb_position(close: float, lower: float, upper: float) -> str:
 
 def _momentum_bias(frame: pd.DataFrame) -> pd.Series:
     bull = (
-        (frame["sma_20"] > frame["sma_50"])
+        (frame["sma_50"] > frame["sma_200"])
         & (frame["macd_hist"] > 0)
         & (frame["rsi_14"] >= 45)
         & (frame["rsi_14"] <= 70)
     )
     bear = (
-        (frame["sma_20"] < frame["sma_50"])
+        (frame["sma_50"] < frame["sma_200"])
         & (frame["macd_hist"] < 0)
         & (frame["rsi_14"] <= 55)
         & (frame["rsi_14"] >= 30)

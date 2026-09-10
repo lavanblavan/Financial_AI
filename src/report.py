@@ -91,7 +91,7 @@ def _html(
   <p class="meta">Generated {date.today().isoformat()} · last bar {snapshot.get("date")}</p>
   <p class="signal">Signal: {signal.get("signal")} · confidence {signal.get("confidence")} · {signal.get("horizon")}</p>
   <h2>Market snapshot</h2>
-  <p>Close {snapshot.get("close"):.2f} · SMA20 {snapshot.get("sma_20"):.2f} · SMA50 {snapshot.get("sma_50"):.2f}
+  <p>Close {snapshot.get("close"):.2f} · SMA50 {snapshot.get("sma_50"):.2f} · SMA200 {snapshot.get("sma_200"):.2f}
      · RSI {snapshot.get("rsi_14"):.1f} · MACD hist {snapshot.get("macd_hist"):.3f}
      · bias {snapshot.get("momentum_bias")}</p>
   <img alt="Technical charts" src="data:image/png;base64,{chart}" />
