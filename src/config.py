@@ -22,19 +22,33 @@ def project_root() -> Path:
     return here.parent
 
 
-def _secret_from_colab(name: str) -> str | None:
+def probe_colab_secret(name: str) -> str:
+    """Why a Colab secret is missing. Never returns the secret value."""
     try:
         from google.colab import userdata
     except ImportError:
-        return None
+        return "not_colab"
     try:
         value = userdata.get(name)
-    except Exception:
+    except Exception as exc:
+        kind = type(exc).__name__
+        message = str(exc).lower()
+        if "Access" in kind or "access" in message or "grant" in message:
+            return "access_denied"
+        if "NotFound" in kind or "not found" in message:
+            return "not_found"
+        return f"error:{kind}"
+    if value and str(value).strip():
+        return "present"
+    return "empty"
+
+
+def _secret_from_colab(name: str) -> str | None:
+    if probe_colab_secret(name) != "present":
         return None
-    if value is None:
-        return None
-    value = str(value).strip()
-    return value or None
+    from google.colab import userdata
+
+    return str(userdata.get(name)).strip()
 
 
 def _secret_from_env(name: str) -> str | None:
@@ -85,7 +99,7 @@ def load_settings() -> Settings:
 def describe_env(settings: Settings) -> dict[str, str]:
     """Safe status for printing. Never includes key values."""
     source = "colab-secrets" if running_in_colab() else "local-dotenv"
-    return {
+    status = {
         "runtime": "colab" if running_in_colab() else "local",
         "secret_source": source,
         "ticker": settings.ticker,
@@ -93,3 +107,33 @@ def describe_env(settings: Settings) -> dict[str, str]:
         "llm_provider": "groq",
         "llm_key_present": "yes" if settings.llm_ready else "no",
     }
+    if running_in_colab():
+        status["groq_secret_status"] = probe_colab_secret("GROQ_API_KEY")
+    return status
+
+
+def missing_key_help(settings: Settings) -> str:
+    if settings.llm_ready:
+        return ""
+    if running_in_colab():
+        status = probe_colab_secret("GROQ_API_KEY")
+        if status == "access_denied":
+            return (
+                "Colab has GROQ_API_KEY but this notebook cannot read it. "
+                "Open the key icon (Secrets), find GROQ_API_KEY, and turn Notebook access ON. "
+                "Then Runtime → Restart session and Run all."
+            )
+        if status == "not_found":
+            return (
+                "Colab Secret GROQ_API_KEY is missing. "
+                "Do not use Windows 'copy' in Colab. "
+                "Click the key icon → Add secret → name exactly GROQ_API_KEY → paste the key → "
+                "enable Notebook access → re-run this cell."
+            )
+        if status == "empty":
+            return "Colab Secret GROQ_API_KEY exists but is empty. Paste the key, save, and re-run."
+        return (
+            f"Could not read GROQ_API_KEY ({status}). "
+            "Add it under the Colab key icon and enable Notebook access."
+        )
+    return "Local: copy .env.example to .env and set GROQ_API_KEY."
