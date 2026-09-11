@@ -7,14 +7,34 @@ from typing import Any
 from urllib.parse import quote_plus
 
 import feedparser
+import pandas as pd
 import requests
+
+
+def fetch_news_asof(
+    ticker: str,
+    asof,
+    lookback_days: int = 14,
+    min_items: int = 8,
+) -> list[dict[str, str]]:
+    """Headlines dated in a window ending on asof. Not a paid news archive."""
+    asof_ts = pd.Timestamp(asof)
+    if asof_ts.tzinfo is not None:
+        asof_ts = asof_ts.tz_convert(None)
+    start = (asof_ts - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+    end = asof_ts.strftime("%Y-%m-%d")
+    query = f"{ticker} stock after:{start} before:{end}"
+    return _dedupe(_from_google_news(ticker, query=query), min_items)
 
 
 def fetch_news(ticker: str, min_items: int = 10) -> list[dict[str, str]]:
     headlines = _from_yfinance(ticker)
     if len(headlines) < min_items:
         headlines.extend(_from_google_news(ticker))
+    return _dedupe(headlines, min_items)
 
+
+def _dedupe(headlines: list[dict[str, str]], min_items: int) -> list[dict[str, str]]:
     seen: set[str] = set()
     unique: list[dict[str, str]] = []
     for item in headlines:
@@ -56,8 +76,8 @@ def _from_yfinance(ticker: str) -> list[dict[str, str]]:
     return items
 
 
-def _from_google_news(ticker: str) -> list[dict[str, str]]:
-    query = quote_plus(f"{ticker} stock")
+def _from_google_news(ticker: str, query: str | None = None) -> list[dict[str, str]]:
+    query = quote_plus(query or f"{ticker} stock")
     url = f"https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
     try:
         response = requests.get(url, timeout=15)
