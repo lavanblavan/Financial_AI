@@ -137,40 +137,50 @@ def render_replay_report(
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>{ticker} historical replay</title>
+  <title>{ticker} May 2026 signal replay</title>
   <style>
-    body {{ font-family: Arial, sans-serif; max-width: 1100px; margin: 32px auto; color: #111; }}
+    body {{ font-family: Arial, sans-serif; max-width: 1100px; margin: 32px auto; color: #111; line-height: 1.45; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 0.92rem; }}
     th, td {{ border: 1px solid #ddd; padding: 6px 8px; text-align: left; }}
     th {{ background: #f4f4f4; }}
     tr.ok td:nth-child(8) {{ color: #0a7; font-weight: 700; }}
     tr.miss td:nth-child(8) {{ color: #c33; font-weight: 700; }}
     .note {{ color: #444; font-size: 0.9rem; }}
+    .expect {{ background: #f7f7f7; padding: 12px 16px; }}
   </style>
 </head>
 <body>
-  <h1>{ticker} replay: decide, then check the next {horizon} days</h1>
-  <p>Each row is a past date. Indicators use prices <em>up to that day only</em>.
-  Headlines are requested for the two weeks before that day. Then we look at
-  what the price actually did over the next {horizon} trading days.</p>
-  <p><strong>Directional accuracy (BUY/SELL only): {acc_txt}</strong>
-     · dates {summary['n_dates']}
+  <h1>{ticker} out-of-sample replay (May 2026)</h1>
+  <p>Each row is a decision date. Indicators are computed on prices available through that close.
+  News is restricted to GDELT items with a seen-date in the prior 14 days. The realised column is the
+  actual close {horizon} trading sessions later. There is no look-ahead in the feature set.</p>
+  <div class="expect">
+    <p><strong>How to interpret</strong></p>
+    <ul>
+      <li><strong>Directional accuracy</strong> uses BUY and SELL only. HOLD is a non-position and is omitted from this rate.</li>
+      <li>A useful rule tends to show <em>higher mean next-{horizon}d return after BUY than after SELL</em>.</li>
+      <li>If BUY+SELL counts are small, treat the percentage as descriptive, not a robust edge.</li>
+      <li>A large HOLD share is consistent with a conservative filter, not automatically an error.</li>
+    </ul>
+  </div>
+  <p><strong>Directional accuracy (BUY/SELL): {acc_txt}</strong>
+     · decision dates {summary['n_dates']}
      · BUY {summary['n_buy']} · SELL {summary['n_sell']} · HOLD {summary['n_hold']}
-     · rows with headlines {summary['n_with_headlines']}</p>
-  <p>Mean next-{horizon}d return after BUY: {_pct(summary.get('mean_return_after_buy'))}
+     · dates with headlines {summary['n_with_headlines']}</p>
+  <p>Mean realised return over the next {horizon} sessions — after BUY: {_pct(summary.get('mean_return_after_buy'))}
      · after SELL: {_pct(summary.get('mean_return_after_sell'))}</p>
   <table>
     <thead>
       <tr>
-        <th>Date</th><th>Close</th><th>Our call</th><th>Rule only</th>
-        <th>News</th><th>Next {horizon}d</th><th>Actual</th><th>Match</th><th>Headline</th>
+        <th>Date</th><th>Close</th><th>Signal</th><th>Technical rule</th>
+        <th>Headlines</th><th>Next {horizon}d</th><th>Realised</th><th>Correct direction</th><th>Lead headline</th>
       </tr>
     </thead>
     <tbody>{rows}</tbody>
   </table>
-  <p class="note">Google date filters are not a Bloomberg news archive. Some stories
-  may be ranked by today’s relevance. HOLD is excluded from accuracy because it is
-  not a directional bet. This is research, not investment advice. Generated {date.today().isoformat()}.</p>
+  <p class="note">News coverage is GDELT (public dated index), not a licensed newswire. Respect a several-second
+  pause between API re-runs. This report is a research diagnostic for an engineering assessment and is not
+  investment advice. Generated {date.today().isoformat()}.</p>
 </body>
 </html>
 """
@@ -199,7 +209,7 @@ def _decide(
             pass
     return {
         "signal": RULE_TO_SIGNAL.get(str(snapshot.get("momentum_bias")), "HOLD"),
-        "rationale": "Used technical rule (LLM skipped or failed).",
+        "rationale": "Technical rule applied; language-model call skipped or unavailable.",
         "source": "rule",
     }
 
