@@ -10,7 +10,7 @@ import pandas as pd
 from src.config import Settings, project_root
 from src.evaluate import RULE_TO_SIGNAL
 from src.indicators import add_indicators, latest_snapshot
-from src.news import fetch_news_asof
+from src.news import fetch_news_asof, fetch_news_window
 from src.signal import GroqAPIError, LLMNotConfiguredError, build_signal
 
 
@@ -21,10 +21,13 @@ def replay_history(
     step: int = 21,
     horizon: int = 10,
     use_llm: bool = True,
+    start: str | None = None,
+    end: str | None = None,
 ) -> pd.DataFrame:
     """On each replay date, use only prices up to that day, plus dated headlines.
 
     Then compare the BUY/SELL call to the actual next `horizon` trading-day return.
+    Pass start/end (YYYY-MM-DD) to focus on one month, e.g. May 2026.
     """
     frame = prices.copy()
     idx = pd.to_datetime(frame.index)
@@ -33,18 +36,19 @@ def replay_history(
     frame.index = idx
     frame = frame.sort_index()
 
-    first = step + 200
-    last = len(frame) - horizon
-    if last <= first:
-        raise ValueError("Not enough history. Need ~2y of prices for SMA-200 plus a 10-day future window.")
+    positions = _decision_positions(frame, step=step, horizon=horizon, start=start, end=end)
+    corpus: list[dict[str, str]] = []
+    if start and end:
+        news_start = pd.Timestamp(start) - pd.Timedelta(days=14)
+        corpus = fetch_news_window(ticker, news_start, end, max_records=75)
 
     rows: list[dict[str, Any]] = []
-    for pos in range(first, last, step):
+    for pos in positions:
         asof = frame.index[pos]
         hist = frame.iloc[: pos + 1]
         scored = add_indicators(hist)
         snapshot = latest_snapshot(scored)
-        headlines = fetch_news_asof(ticker, asof)
+        headlines = fetch_news_asof(ticker, asof, corpus=corpus if start and end else None)
         decision = _decide(snapshot, headlines, settings, ticker, use_llm)
         future_close = float(frame.iloc[pos + horizon]["Close"])
         asof_close = float(frame.iloc[pos]["Close"])
@@ -68,6 +72,32 @@ def replay_history(
             }
         )
     return pd.DataFrame(rows)
+
+
+def _decision_positions(
+    frame: pd.DataFrame,
+    step: int,
+    horizon: int,
+    start: str | None,
+    end: str | None,
+) -> list[int]:
+    last = len(frame) - horizon
+    if start and end:
+        start_ts = pd.Timestamp(start)
+        end_ts = pd.Timestamp(end)
+        picks = [
+            i
+            for i in range(len(frame))
+            if i >= 200 and i < last and start_ts <= frame.index[i] <= end_ts
+        ]
+        if not picks:
+            raise ValueError(f"No replay dates between {start} and {end}. Check that prices cover that month plus 10 later days.")
+        return picks[:: max(step, 1)]
+
+    first = step + 200
+    if last <= first:
+        raise ValueError("Not enough history. Need ~2y of prices for SMA-200 plus a 10-day future window.")
+    return list(range(first, last, step))
 
 
 def replay_summary(replay: pd.DataFrame) -> dict[str, Any]:

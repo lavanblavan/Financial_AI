@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote_plus
@@ -16,15 +17,32 @@ def fetch_news_asof(
     asof,
     lookback_days: int = 14,
     min_items: int = 8,
+    corpus: list[dict[str, str]] | None = None,
 ) -> list[dict[str, str]]:
-    """Headlines dated in a window ending on asof. Not a paid news archive."""
-    asof_ts = pd.Timestamp(asof)
-    if asof_ts.tzinfo is not None:
-        asof_ts = asof_ts.tz_convert(None)
-    start = (asof_ts - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-    end = asof_ts.strftime("%Y-%m-%d")
-    query = f"{ticker} stock after:{start} before:{end}"
-    return _dedupe(_from_google_news(ticker, query=query), min_items)
+    """Headlines whose seen-date is in (asof - lookback, asof]. Prefer a preloaded corpus."""
+    asof_ts = _naive_ts(asof)
+    start = asof_ts - pd.Timedelta(days=lookback_days)
+    pool = corpus if corpus is not None else fetch_news_window(ticker, start, asof_ts)
+    in_window: list[dict[str, str]] = []
+    for item in pool:
+        seen = _parse_seen(item.get("date", ""))
+        if seen is None or seen < start or seen > asof_ts:
+            continue
+        in_window.append(item)
+    if in_window:
+        return _dedupe(in_window, min_items)
+    return _dedupe(_from_google_news(ticker, query=f"{ticker} stock after:{start.date()} before:{asof_ts.date()}"), min_items)
+
+
+def fetch_news_window(ticker: str, start, end, max_records: int = 75) -> list[dict[str, str]]:
+    """Dated articles from GDELT for [start, end]. One call, better than Google after/before."""
+    start_ts = _naive_ts(start)
+    end_ts = _naive_ts(end)
+    articles = _from_gdelt(ticker, start_ts, end_ts, max_records=max_records)
+    if articles:
+        return articles
+    query = f"{ticker} stock after:{start_ts.date()} before:{end_ts.date()}"
+    return _from_google_news(ticker, query=query)
 
 
 def fetch_news(ticker: str, min_items: int = 10) -> list[dict[str, str]]:
@@ -132,3 +150,73 @@ def _format_ts(row: dict[str, Any]) -> str:
     if ts:
         return str(ts)[:16]
     return ""
+
+
+def _naive_ts(value) -> pd.Timestamp:
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert(None)
+    return ts
+
+
+def _parse_seen(raw: str) -> pd.Timestamp | None:
+    if not raw:
+        return None
+    try:
+        ts = pd.to_datetime(raw, utc=True, errors="coerce")
+    except Exception:
+        return None
+    if ts is None or pd.isna(ts):
+        return None
+    if getattr(ts, "tzinfo", None) is not None:
+        ts = ts.tz_convert(None)
+    return pd.Timestamp(ts)
+
+
+def _from_gdelt(ticker: str, start: pd.Timestamp, end: pd.Timestamp, max_records: int = 75) -> list[dict[str, str]]:
+    name = {"AAPL": "Apple", "MSFT": "Microsoft", "GOOGL": "Google", "AMZN": "Amazon", "NVDA": "Nvidia"}.get(
+        ticker.upper(), ticker
+    )
+    params = {
+        "query": f"({name} OR {ticker}) sourcelang:english",
+        "mode": "ArtList",
+        "maxrecords": str(max_records),
+        "format": "json",
+        "startdatetime": start.strftime("%Y%m%d%H%M%S"),
+        "enddatetime": end.strftime("%Y%m%d235959"),
+    }
+    headers = {"User-Agent": "FinancialAI-assessment/1.0"}
+    try:
+        response = requests.get(
+            "https://api.gdeltproject.org/api/v2/doc/doc",
+            params=params,
+            headers=headers,
+            timeout=40,
+        )
+        if response.status_code == 429:
+            time.sleep(6)
+            response = requests.get(
+                "https://api.gdeltproject.org/api/v2/doc/doc",
+                params=params,
+                headers=headers,
+                timeout=40,
+            )
+        response.raise_for_status()
+        payload = response.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    items: list[dict[str, str]] = []
+    for row in payload.get("articles") or []:
+        title = str(row.get("title") or "").strip()
+        if not title:
+            continue
+        items.append(
+            {
+                "title": title,
+                "publisher": str(row.get("domain") or "GDELT"),
+                "date": str(row.get("seendate") or ""),
+                "source": "gdelt",
+            }
+        )
+    return items
