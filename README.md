@@ -53,6 +53,17 @@ pytest
 
 Open `task1.ipynb` in Cursor / VS Code / Jupyter and run all cells.
 
+### Rule selection
+
+Three momentum rules are compared on holdout data; the winner drives `momentum_bias` via `DEFAULT_RULE_VARIANT` in `src/config.py`.
+
+```powershell
+python -m scripts.select_rule
+pytest
+```
+
+See `docs/RULE_SELECTION.md` for the holdout comparison table and rationale.
+
 ## Colab run (after the repo is on GitHub)
 
 Open:

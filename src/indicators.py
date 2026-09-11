@@ -5,8 +5,21 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from src.config import DEFAULT_RULE_VARIANT
 
-def add_indicators(prices: pd.DataFrame) -> pd.DataFrame:
+RULE_VARIANTS: tuple[str, ...] = ("baseline", "acceleration", "score")
+
+RULE_VARIANT_LABELS: dict[str, str] = {
+    "baseline": "Strict AND filter (SMA + MACD>0 + RSI 45-70)",
+    "acceleration": "Trend + rising MACD histogram + RSI 50-65",
+    "score": "Confluence score >=4/5 (SMA, MACD, MACD rising, RSI, vs BB mid)",
+}
+
+
+def add_indicators(
+    prices: pd.DataFrame,
+    rule_variant: str | None = None,
+) -> pd.DataFrame:
     out = prices.copy()
     close = out["Close"]
 
@@ -21,8 +34,18 @@ def add_indicators(prices: pd.DataFrame) -> pd.DataFrame:
     out["bb_upper"] = upper
     out["bb_mid"] = mid
     out["bb_lower"] = lower
-    out["momentum_bias"] = _momentum_bias(out)
+    out["momentum_bias"] = momentum_bias(out, variant=rule_variant or DEFAULT_RULE_VARIANT)
     return out
+
+
+def momentum_bias(frame: pd.DataFrame, variant: str = DEFAULT_RULE_VARIANT) -> pd.Series:
+    if variant not in RULE_VARIANTS:
+        raise ValueError(f"Unknown rule variant {variant!r}. Choose from {RULE_VARIANTS}.")
+    if variant == "baseline":
+        return _momentum_bias_baseline(frame)
+    if variant == "acceleration":
+        return _momentum_bias_acceleration(frame)
+    return _momentum_bias_score(frame)
 
 
 def sma(series: pd.Series, window: int) -> pd.Series:
@@ -94,6 +117,7 @@ def latest_snapshot(frame: pd.DataFrame) -> dict:
         "bb_lower": float(row["bb_lower"]),
         "bb_position": _bb_position(float(row["Close"]), float(row["bb_lower"]), float(row["bb_upper"])),
         "momentum_bias": str(row["momentum_bias"]),
+        "rule_variant": DEFAULT_RULE_VARIANT,
     }
 
 
@@ -109,7 +133,7 @@ def _bb_position(close: float, lower: float, upper: float) -> str:
     return "mid_band"
 
 
-def _momentum_bias(frame: pd.DataFrame) -> pd.Series:
+def _momentum_bias_baseline(frame: pd.DataFrame) -> pd.Series:
     bull = (
         (frame["sma_50"] > frame["sma_200"])
         & (frame["macd_hist"] > 0)
@@ -125,4 +149,52 @@ def _momentum_bias(frame: pd.DataFrame) -> pd.Series:
     out = pd.Series("mixed", index=frame.index, dtype="object")
     out = out.mask(bull, "bullish")
     out = out.mask(bear, "bearish")
+    return out
+
+
+def _momentum_bias_acceleration(frame: pd.DataFrame) -> pd.Series:
+    hist_rising = frame["macd_hist"] > frame["macd_hist"].shift(1)
+    hist_falling = frame["macd_hist"] < frame["macd_hist"].shift(1)
+    bull = (
+        (frame["sma_50"] > frame["sma_200"])
+        & (frame["macd_hist"] > 0)
+        & hist_rising
+        & (frame["rsi_14"] >= 50)
+        & (frame["rsi_14"] <= 65)
+    )
+    bear = (
+        (frame["sma_50"] < frame["sma_200"])
+        & (frame["macd_hist"] < 0)
+        & hist_falling
+        & (frame["rsi_14"] >= 35)
+        & (frame["rsi_14"] <= 50)
+    )
+    out = pd.Series("mixed", index=frame.index, dtype="object")
+    out = out.mask(bull, "bullish")
+    out = out.mask(bear, "bearish")
+    return out
+
+
+def _momentum_bias_score(frame: pd.DataFrame) -> pd.Series:
+    hist_rising = frame["macd_hist"] > frame["macd_hist"].shift(1)
+    hist_falling = frame["macd_hist"] < frame["macd_hist"].shift(1)
+    bull_score = (
+        (frame["sma_50"] > frame["sma_200"]).astype(int)
+        + (frame["macd_hist"] > 0).astype(int)
+        + hist_rising.astype(int)
+        + frame["rsi_14"].between(50, 65).astype(int)
+        + (frame["Close"] > frame["bb_mid"]).astype(int)
+    )
+    bear_score = (
+        (frame["sma_50"] < frame["sma_200"]).astype(int)
+        + (frame["macd_hist"] < 0).astype(int)
+        + hist_falling.astype(int)
+        + frame["rsi_14"].between(35, 50).astype(int)
+        + (frame["Close"] < frame["bb_mid"]).astype(int)
+    )
+    out = pd.Series("mixed", index=frame.index, dtype="object")
+    out[bull_score >= 4] = "bullish"
+    out[bear_score >= 4] = "bearish"
+    conflict = (bull_score >= 4) & (bear_score >= 4)
+    out[conflict] = "mixed"
     return out

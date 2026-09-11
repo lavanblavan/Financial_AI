@@ -7,7 +7,8 @@ from typing import Any
 
 import requests
 
-from src.config import Settings, groq_key_shape, project_root
+from src.config import DEFAULT_RULE_VARIANT, Settings, groq_key_shape, project_root
+from src.evaluate import RULE_TO_SIGNAL
 
 GROQ_MODEL = "openai/gpt-oss-20b"
 
@@ -44,8 +45,16 @@ def _read_prompt() -> str:
 
 
 def _context_pack(ticker: str, snapshot: dict[str, Any], headlines: list[dict[str, str]]) -> str:
-    lines = [f"TICKER: {ticker}", "TECHNICALS:"]
+    rule_signal = RULE_TO_SIGNAL.get(str(snapshot.get("momentum_bias", "")), "HOLD")
+    lines = [
+        f"TICKER: {ticker}",
+        f"RULE_VARIANT: {snapshot.get('rule_variant', DEFAULT_RULE_VARIANT)}",
+        f"RULE_SIGNAL: {rule_signal}",
+        "TECHNICALS:",
+    ]
     for key, value in snapshot.items():
+        if key in {"rule_variant"}:
+            continue
         lines.append(f"- {key}: {value}")
     lines.append("HEADLINES:")
     if not headlines:

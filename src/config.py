@@ -86,6 +86,10 @@ def get_secret(name: str) -> str | None:
     return normalize_secret(_secret_from_env(name))
 
 
+# Selected on 126-session holdout — see docs/RULE_SELECTION.md and scripts/select_rule.py
+DEFAULT_RULE_VARIANT = "score"
+
+
 @dataclass(frozen=True)
 class Settings:
     ticker: str

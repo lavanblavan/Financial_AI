@@ -18,7 +18,7 @@ def test_walk_forward_buy_positive_in_noisy_uptrend():
             "Volume": 1_000_000,
         }
     )
-    scored = add_forward_returns(add_indicators(prices), horizons=(5,))
+    scored = add_forward_returns(add_indicators(prices, rule_variant="baseline"), horizons=(5,))
     table = walk_forward_table(scored, horizon=5)
     buy = table.loc[table["signal"] == "BUY"].iloc[0]
     assert int(buy["n"]) > 0
